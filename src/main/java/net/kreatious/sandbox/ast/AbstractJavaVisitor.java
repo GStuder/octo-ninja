@@ -6,11 +6,15 @@ import java.io.InputStream;
 
 import org.apache.commons.io.FileUtils;
 import org.apache.commons.io.IOUtils;
+import org.eclipse.jdt.core.JavaCore;
 import org.eclipse.jdt.core.dom.AST;
 import org.eclipse.jdt.core.dom.ASTNode;
 import org.eclipse.jdt.core.dom.ASTParser;
 import org.eclipse.jdt.core.dom.ASTVisitor;
 import org.eclipse.jdt.core.dom.CompilationUnit;
+import org.eclipse.jface.text.BadLocationException;
+import org.eclipse.jface.text.Document;
+import org.eclipse.text.edits.MalformedTreeException;
 
 /**
  * Parses a file into an abstract syntax tree for modification.
@@ -36,6 +40,32 @@ public abstract class AbstractJavaVisitor extends ASTVisitor {
 
             unit = (CompilationUnit) parser.createAST(null);
             unit.accept(this);
+        }
+    }
+
+    /**
+     * Modifies the specified java file.
+     * 
+     * @param file
+     *            the java file to parse and modify.
+     * @throws IOException
+     *             if an I/O error occurs
+     */
+    public void modify(File file) throws IOException {
+        try (InputStream sourceStream = FileUtils.openInputStream(file)) {
+            Document source = new Document(IOUtils.toString(sourceStream));
+            ASTParser parser = ASTParser.newParser(AST.JLS8);
+            parser.setSource(source.get().toCharArray());
+            parser.setKind(ASTParser.K_COMPILATION_UNIT);
+
+            unit = (CompilationUnit) parser.createAST(null);
+            unit.recordModifications();
+            unit.accept(this);
+            unit.rewrite(source, JavaCore.getOptions()).apply(source);
+
+            FileUtils.write(file, source.get());
+        } catch (MalformedTreeException | BadLocationException e) {
+            throw new IllegalStateException(e);
         }
     }
 
